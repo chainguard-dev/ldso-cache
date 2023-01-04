@@ -180,7 +180,7 @@ func LoadCacheFile(path string) (*LDSOCacheFile, error) {
 	extHeader.describe()
 
 	// Parse the extension chunks we understand.
-	sections := []LDSOCacheExtensionSection{}
+	sections := []*LDSOCacheExtensionSection{}
 	for i := uint32(0); i < extHeader.Count; i++ {
 		sectionHeader := LDSOCacheExtensionSectionHeader{}
 		if err := binary.Read(r, binary.LittleEndian, &sectionHeader); err != nil {
@@ -188,7 +188,7 @@ func LoadCacheFile(path string) (*LDSOCacheFile, error) {
 		}
 		sectionHeader.describe()
 
-		section := LDSOCacheExtensionSection{Header: sectionHeader}
+		section := &LDSOCacheExtensionSection{Header: sectionHeader}
 		sections = append(sections, section)
 	}
 
@@ -208,7 +208,9 @@ func LoadCacheFile(path string) (*LDSOCacheFile, error) {
 		}
 	}
 
-	file.Extensions = sections
+	for _, section := range sections {
+		file.Extensions = append(file.Extensions, *section)
+	}
 
 	return &file, nil
 }
