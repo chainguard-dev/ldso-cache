@@ -20,6 +20,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"unsafe"
 )
 
 const ldsoMagic = "glibc-ld.so.cache"
@@ -239,4 +241,104 @@ func extractShlibName(strtable []byte, startIdx uint32) (string, error) {
 	}
 
 	return string(subset[:terminatorPos]), nil
+}
+
+// Write writes a cache file to disk.
+func (cf *LDSOCacheFile) Write(path string) error {
+	buf := &bytes.Buffer{}
+
+	// Calculate the size of the file entry table for use
+	// when calculating the file entry string table offsets.
+	fileEntryTableSize := int(unsafe.Sizeof(LDSORawCacheHeader{}) + (uintptr(len(cf.Entries)) * unsafe.Sizeof(LDSORawCacheEntry{})))
+
+	// Write the header section.
+	if err := cf.Header.Write(buf); err != nil {
+		return err
+	}
+
+	// Build the string table.
+	lrcEntries := []LDSORawCacheEntry{}
+	stringTable := []byte{}
+	for _, lib := range cf.Entries {
+		cursor := uint32(fileEntryTableSize) + uint32(len(stringTable))
+		entry := []byte(lib.Name)
+		entry = append(entry, byte(0x0))
+		stringTable = append(stringTable, entry...)
+
+		lrcEntry := LDSORawCacheEntry{
+			Flags: lib.Flags,
+			Key: cursor + uint32(len(filepath.Dir(lib.Name))),
+			Value: cursor,
+			OSVersion_Needed: lib.OSVersion_Needed,
+			HWCap_Needed: lib.HWCap_Needed,
+		}
+
+		lrcEntries = append(lrcEntries, lrcEntry)
+	}
+
+	// Write the file entry table.
+	if err := binary.Write(buf, binary.LittleEndian, &lrcEntries); err != nil {
+		return err
+	}
+
+	// Write the string table.
+	if _, err := buf.Write(stringTable); err != nil {
+		return err
+	}
+
+	pos := buf.Len()
+	fmt.Printf("pos = %d\n", pos)
+
+	alignedPos := (pos & -16) + 8
+	fmt.Printf("aligned = %d\n", alignedPos)
+
+	pad := make([]byte, alignedPos - pos)
+	if _, err := buf.Write(pad); err != nil {
+		return err
+	}
+
+	// Write the extension sections.
+	if len(cf.Extensions) > 0 {
+		ehdr := LDSOCacheExtensionHeader{
+			Magic: ldsoExtensionMagic,
+			Count: uint32(len(cf.Extensions)),
+		}
+
+		if err := binary.Write(buf, binary.LittleEndian, &ehdr); err != nil {
+			return err
+		}
+
+		for _, ext := range cf.Extensions {
+			if err := binary.Write(buf, binary.LittleEndian, ext.Header); err != nil {
+				return err
+			}
+		}
+
+		for _, ext := range cf.Extensions {
+			if _, err := buf.Write(ext.Data); err != nil {
+				return err
+			}
+		}
+	}
+
+	w, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer w.Close()
+
+	if _, err := io.Copy(w, buf); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Write writes a header for a cache file to disk.
+func (hdr *LDSORawCacheHeader) Write(w io.Writer) error {
+	if err := binary.Write(w, binary.LittleEndian, hdr); err != nil {
+		return err
+	}
+
+	return nil
 }
