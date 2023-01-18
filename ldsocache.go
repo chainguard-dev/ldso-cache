@@ -125,8 +125,6 @@ func LoadCacheFile(path string) (*LDSOCacheFile, error) {
 		return nil, err
 	}
 
-	header.describe()
-
 	rawlibs := []LDSORawCacheEntry{}
 	for i := uint32(0); i < header.NumLibs; i++ {
 		rawlib := LDSORawCacheEntry{}
@@ -193,7 +191,6 @@ func LoadCacheFile(path string) (*LDSOCacheFile, error) {
 	if extHeader.Magic != ldsoExtensionMagic {
 		return &file, nil
 	}
-	extHeader.describe()
 
 	// Parse the extension chunks we understand.
 	sections := []*LDSOCacheExtensionSection{}
@@ -202,7 +199,6 @@ func LoadCacheFile(path string) (*LDSOCacheFile, error) {
 		if err := binary.Read(r, binary.LittleEndian, &sectionHeader); err != nil {
 			return &file, nil
 		}
-		sectionHeader.describe()
 
 		section := &LDSOCacheExtensionSection{Header: sectionHeader}
 		sections = append(sections, section)
@@ -287,10 +283,7 @@ func (cf *LDSOCacheFile) Write(path string) error {
 	}
 
 	pos := buf.Len()
-	fmt.Printf("pos = %d\n", pos)
-
 	alignedPos := (pos & -16) + 8
-	fmt.Printf("aligned = %d\n", alignedPos)
 
 	pad := make([]byte, alignedPos - pos)
 	if _, err := buf.Write(pad); err != nil {
