@@ -247,11 +247,6 @@ func (cf *LDSOCacheFile) Write(path string) error {
 	// when calculating the file entry string table offsets.
 	fileEntryTableSize := int(unsafe.Sizeof(LDSORawCacheHeader{}) + (uintptr(len(cf.Entries)) * unsafe.Sizeof(LDSORawCacheEntry{})))
 
-	// Write the header section.
-	if err := cf.Header.Write(buf); err != nil {
-		return err
-	}
-
 	// Build the string table.
 	lrcEntries := []LDSORawCacheEntry{}
 	stringTable := []byte{}
@@ -270,6 +265,13 @@ func (cf *LDSOCacheFile) Write(path string) error {
 		}
 
 		lrcEntries = append(lrcEntries, lrcEntry)
+	}
+
+	// Write the header section.
+	cf.Header.NumLibs = uint32(len(lrcEntries))
+	cf.Header.StrTableSize = uint32(len(stringTable))
+	if err := cf.Header.Write(buf); err != nil {
+		return err
 	}
 
 	// Write the file entry table.
